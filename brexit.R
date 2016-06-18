@@ -42,6 +42,8 @@ for (res in 1:(nrow(poll_results)-7)) {
     }
   }
 }
+
+# choose start date to start graphing from
 start_date = "Sep 14, 2014"
 graph_data_ma = results %>% gather(position,vote,-Date) %>% filter(Date > as.Date(start_date, format="%B %d, %Y"))
 graph_data_polls = poll_results %>% select(1:4) %>% gather(position,vote,-Date) %>% filter(Date > as.Date(start_date, format="%B %d, %Y"))
