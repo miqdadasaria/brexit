@@ -124,7 +124,7 @@ plot_ft_ma_graph = function(poll_results, ft_graph_start_date){
     theme_bw()
 
     # save plot to file
-    ggsave("ft_plot.png",ft_plot,width=30,height=20,units="cm",dpi=300)  
+    #ggsave("ft_plot.png",ft_plot,width=30,height=20,units="cm",dpi=300)  
   
   return(ft_plot)
 }
@@ -150,12 +150,12 @@ plot_pollster_effects_graph = function(poll_results){
     geom_hline(yintercept=50, linetype=2, colour="darkgrey") +
     geom_hline(yintercept=25, linetype=2, colour="darkgrey") +
     facet_grid(position~.) +
-    scale_x_date(date_breaks="3 months", date_labels="%b %y") +
+    scale_x_date(date_breaks="9 months", date_labels="%b %y") +
     ylab("Vote (%)") +
     theme_bw()
 
   # save plot to file
-  ggsave("pollster_plot.png",pollster_plot,width=40,height=20,units="cm",dpi=300)  
+  #ggsave("pollster_plot.png",pollster_plot,width=40,height=20,units="cm",dpi=300)  
 
   return(pollster_plot)
 }
@@ -222,7 +222,7 @@ get_size_weights = function(se, probs, size_weights_method){
 # calculate predictions by combining assumptions on the proportion of undecided people 
 # who vote with various weighting assumptions around sample size and timeliness 
 #######################################################################################
-generate_predictions = function(proportion_undecided_vote, proportion_undecided_remain, time_weights_method, size_weights_method, relative_weight_time_to_size, confidence_interval){
+generate_predictions = function(poll_results, proportion_undecided_vote, proportion_undecided_remain, time_weights_method, size_weights_method, relative_weight_time_to_size, confidence_interval){
   z = qnorm((1+confidence_interval)/2)
   # assumes undecided voter proportion is constant over time
   model_poll_results = poll_results %>% 
@@ -285,7 +285,7 @@ plot_poll_data = function(predicted_poll_data){
     theme(legend.position = c(0, 1), legend.justification = c(0, 1))
   
   # save plot to file
-  ggsave("polls_plot.png",polls_plot,width=30,height=20,units="cm",dpi=300)  
+  #ggsave("polls_plot.png",polls_plot,width=30,height=20,units="cm",dpi=300)  
   
   return(polls_plot)
 }
@@ -303,36 +303,8 @@ plot_model_weights = function(predicted_poll_data){
     theme_bw()
   
   # save plot to file
-  ggsave("weights_plot.png",weights_plot,width=30,height=20,units="cm",dpi=300)  
+  #ggsave("weights_plot.png",weights_plot,width=30,height=20,units="cm",dpi=300)  
 
   return(weights_plot)
 }
 
-# key model parameters - these can be manipulated in shiny
-confidence_interval = 0.95
-time_weights_method = "exponential"
-size_weights_method = "FE"
-relative_weight_time_to_size = 1
-proportion_undecided_vote = 0.5
-proportion_undecided_remain = 0.7
-
-# load data
-poll_results = load_data(imputation="mean", cached=TRUE)
-
-# replicate FT analysis
-ft_plot = plot_ft_ma_graph(poll_results, ft_graph_start_date=as.Date("Aug 31, 2015", format="%B %d, %Y"))
-
-# run some diagnostics to check for pollster effects
-pollster_plot = plot_pollster_effects_graph(poll_results)
-run_pollster_regressions(poll_results)
-## regression results suggest little case for pollster effect so 
-## model will treat each poll result as independent observation
-
-# run prediction model
-predicted_poll_data = generate_predictions(proportion_undecided_vote, proportion_undecided_remain, time_weights_method, size_weights_method, relative_weight_time_to_size, confidence_interval)
-
-# output key model results
-remain_summary = summarise_prediction(predicted_poll_data, "remain", confidence_interval)
-leave_summary = summarise_prediction(predicted_poll_data, "leave", confidence_interval)
-polls_plot = plot_poll_data(predicted_poll_data)
-weights_plot = plot_model_weights(predicted_poll_data)
