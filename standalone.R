@@ -11,6 +11,8 @@ confidence_interval = 0.95
 time_weights_method = "exponential"
 size_weights_method = "FE"
 relative_weight_time_to_size = 1
+proportion_leave_vote = 0.9
+proportion_remain_vote = 0.7
 proportion_undecided_vote = 0.5
 proportion_undecided_remain = 0.7
 
@@ -27,10 +29,10 @@ run_pollster_regressions(poll_results)
 ## model will treat each poll result as independent observation
 
 # run prediction model
-predicted_poll_data = generate_predictions(poll_results, proportion_undecided_vote, proportion_undecided_remain, time_weights_method, size_weights_method, relative_weight_time_to_size, confidence_interval)
+predicted_poll_data = generate_predictions(poll_results, proportion_leave_vote, proportion_remain_vote, proportion_undecided_vote, proportion_undecided_remain, time_weights_method, size_weights_method, relative_weight_time_to_size, confidence_interval)
 
 # output key model results
-remain_summary = summarise_prediction(predicted_poll_data, "remain", confidence_interval)
-leave_summary = summarise_prediction(predicted_poll_data, "leave", confidence_interval)
+result_summary = summarise_prediction(predicted_poll_data, confidence_interval)
+
 polls_plot = plot_poll_data(predicted_poll_data)
 weights_plot = plot_model_weights(predicted_poll_data)

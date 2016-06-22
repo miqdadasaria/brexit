@@ -40,6 +40,7 @@ load_data = function(imputation, cached){
   
   # fix spelling discrepancies in Pollster names
   poll_results$Pollster = str_replace(poll_results$Pollster,"Comres","ComRes")
+  poll_results$Pollster = str_replace(poll_results$Pollster,"Yougov","YouGov")
   
   imputed=0
   # handle missing sample sizes appropriately
@@ -57,7 +58,7 @@ load_data = function(imputation, cached){
   
   # filter data for start and end dates of interest
   start_date = "Sep 9, 2010"
-  end_date = "Jun 20, 2016"
+  end_date = election_date
   poll_results = poll_results %>% 
     filter(Date >= as.Date(start_date, format="%B %d, %Y") & 
              Date <= as.Date(end_date, format="%B %d, %Y"))
@@ -194,7 +195,7 @@ get_time_weights = function(days, method){
     weights = 1/exp(days)
   }
   # normalise weights
-  weights = weights/max(weights)  
+  weights = weights/sum(weights)  
  
   return(weights)
 }
@@ -213,7 +214,7 @@ get_size_weights = function(se, probs, size_weights_method){
     weights = 1/(se^2+tau_sq)
   }
   # normalise weights
-  weights = weights/max(weights)  
+  weights = weights/sum(weights)  
   
   return(weights)
 }
@@ -222,16 +223,18 @@ get_size_weights = function(se, probs, size_weights_method){
 # calculate predictions by combining assumptions on the proportion of undecided people 
 # who vote with various weighting assumptions around sample size and timeliness 
 #######################################################################################
-generate_predictions = function(poll_results, proportion_undecided_vote, proportion_undecided_remain, time_weights_method, size_weights_method, relative_weight_time_to_size, confidence_interval){
+generate_predictions = function(poll_results, proportion_leave_vote, proportion_remain_vote, proportion_undecided_vote, proportion_undecided_remain, time_weights_method, size_weights_method, relative_weight_time_to_size, confidence_interval){
   z = qnorm((1+confidence_interval)/2)
-  # assumes undecided voter proportion is constant over time
+  # assumes leave, remain and undecided voter proportions are constant over time
   model_poll_results = poll_results %>% 
     mutate(days_to_election=as.numeric(election_date-Date), 
            time_weight=get_time_weights(days_to_election, time_weights_method),
-           undecided_voters = round(Sample*(Undecided/100)*proportion_undecided_vote),
-           total = round(Sample*(Remain+Leave)/100)+undecided_voters,
-           total_remain = total*((Remain+(Undecided*proportion_undecided_vote*proportion_undecided_remain))/
-                              (Remain+Leave+(Undecided*proportion_undecided_vote))), 
+           Leave = Leave * proportion_leave_vote,
+           Remain = Remain * proportion_remain_vote,
+           Undecided = Undecided * proportion_undecided_vote,
+           total = round(Sample*(Remain+Leave+Undecided)/100),
+           total_remain = total*((Remain+Undecided*proportion_undecided_remain)/
+                              (Remain+Leave+Undecided)), 
            total_leave = total-total_remain,
            se = sqrt(total_remain*total_leave/total^3),
            remain = total_remain/total,
@@ -248,20 +251,31 @@ generate_predictions = function(poll_results, proportion_undecided_vote, proport
 #########################################################################
 # calculate a weighted average of the polls with confidence intervals
 #########################################################################
-summarise_prediction = function(results, outcome, confidence_interval){
+summarise_prediction = function(results, confidence_interval){
   z = qnorm((1+confidence_interval)/2)
   
-  wa = weighted.mean(results[,outcome], results$overall_weight)
-  wa_se = sqrt(sum(results$overall_weight*(results[,outcome]-wa)^2))
-  wa_uci = wa + z*wa_se
-  wa_lci = wa - z*wa_se
+  result = list()
+  for(outcome in c("remain","leave")){
+    wa = weighted.mean(results[,outcome], results$overall_weight)
+    wa_se = sqrt(sum(results$overall_weight*(results[,outcome]-wa)^2))
+    wa_uci = wa + z*wa_se
+    wa_lci = wa - z*wa_se
+    result[[outcome]] = c(wa,wa_lci,wa_uci)
+  }
 
-  outcome_summary = paste("Predicted probabilty of ", outcome,": ",
-      round(wa*100,2),"% with ",
-      confidence_interval*100,"% CI of (",
-      round(wa_lci*100,2)," to ",
-      round(wa_uci*100,2),")",sep="")
-
+  if(result[["remain"]][1]>result[["leave"]][1]){
+    outcome_summary = paste("The polls predict Britain will <font color=green>remain</font> in the EU probability: ",
+                            round(result[["remain"]][1]*100,2),"% with ",
+                            confidence_interval*100,"% CI (",
+                            round(result[["remain"]][2]*100,2)," to ",
+                            round(result[["remain"]][3]*100,2),")",sep="")      
+  } else {
+    outcome_summary = paste("The polls predict Britain will <font color=red>leave</font> the EU probability: ",
+                            round(result[["leave"]][1]*100,2),"% with ",
+                            confidence_interval*100,"% CI (",
+                            round(result[["leave"]][2]*100,2)," to ",
+                            round(result[["leave"]][3]*100,2),")",sep="")      
+  }
   return(outcome_summary)
 }
 
