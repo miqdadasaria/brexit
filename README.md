@@ -8,4 +8,4 @@ To run the stand alone R code use file standalone.R
 
 To run the shiny app from R you must have the shiny package installed and run the following command from the R console: shiny::runGitHub('brexit', 'miqdadasaria')
 
-Alternatively a running example can be found at the following address: https://miqdadasaria.shinyapps.io/brexit/
+Alternatively a running example can be found at the following address: https://miqdad.freeasinspeech.org.uk/brexit/
