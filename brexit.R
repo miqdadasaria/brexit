@@ -12,6 +12,7 @@ library(stringr)
 library(dplyr)
 library(tidyr)
 library(ggplot2)
+library(lmtest) 
 
 # predictions made for Brexit EU referendum on 23rd June 2016
 election_date = as.Date("Jun 23, 2016", format="%B %d, %Y")
@@ -61,7 +62,7 @@ load_data = function(imputation, cached){
   end_date = election_date
   poll_results = poll_results %>% 
     filter(Date >= as.Date(start_date, format="%B %d, %Y") & 
-             Date <= as.Date(end_date, format="%B %d, %Y"))
+      Date <= as.Date(end_date, format="%B %d, %Y"))
   
   return(poll_results)
 }
@@ -116,17 +117,18 @@ plot_ft_ma_graph = function(poll_results, ft_graph_start_date){
   
   ft_plot = ggplot() +
     ggtitle("FT poll of polls moving average") +
-    geom_line(size=1.1, data=filter(graph_data_ma,Date>=ft_graph_start_date), mapping=aes(x=Date,y=vote,group=position,colour=position)) + 
-    geom_point(alpha=0.3, data=filter(graph_data_polls,Date>=ft_graph_start_date), mapping=aes(x=Date,y=vote,group=position,colour=position)) + 
+    geom_line(size=1.1, 
+      data=filter(graph_data_ma,Date >= ft_graph_start_date), 
+      mapping=aes(x=Date, y=vote, group=position, colour=position)) + 
+    geom_point(alpha=0.3, 
+      data=filter(graph_data_polls,Date >= ft_graph_start_date), 
+      mapping=aes(x=Date, y=vote, group=position, colour=position)) + 
     geom_hline(yintercept=50, linetype=2, colour="darkgrey") +
     geom_hline(yintercept=25, linetype=2, colour="darkgrey") +
     scale_x_date(date_breaks="1 month", date_labels="%b %y") +
     ylab("Vote (%)") +
     theme_bw()
 
-    # save plot to file
-    #ggsave("ft_plot.png",ft_plot,width=30,height=20,units="cm",dpi=300)  
-  
   return(ft_plot)
 }
 
@@ -145,7 +147,9 @@ plot_pollster_effects_graph = function(poll_results){
     select(1:5) %>%
     gather(position,vote,-Date,-Pollster)
 
-  pollster_plot = ggplot(data=graph_data_polls, mapping=aes(x=Date,y=vote,group=Pollster,colour=Pollster)) +
+  pollster_plot = ggplot(
+      data=graph_data_polls, 
+      mapping=aes(x=Date, y=vote, group=Pollster, colour=Pollster)) +
     ggtitle("Exploring pollster specific trends") +
     geom_point(alpha=0.5) + 
     geom_hline(yintercept=50, linetype=2, colour="darkgrey") +
@@ -154,10 +158,7 @@ plot_pollster_effects_graph = function(poll_results){
     scale_x_date(date_breaks="9 months", date_labels="%b %y") +
     ylab("Vote (%)") +
     theme_bw()
-
-  # save plot to file
-  #ggsave("pollster_plot.png",pollster_plot,width=40,height=20,units="cm",dpi=300)  
-
+  
   return(pollster_plot)
 }
 
@@ -166,13 +167,42 @@ plot_pollster_effects_graph = function(poll_results){
 # perhaps should have done a multinomial model here
 #################################################################
 run_pollster_regressions = function(poll_results){
-  sink(file="pollster_regressions.txt")
-    pollster_regression_1 = lm(Remain~Date+as.factor(Pollster),data=poll_results,weights=Sample)
-    print(summary(pollster_regression_1))
-    pollster_regression_2 = lm(Leave~Date+as.factor(Pollster),data=poll_results,weights=Sample)
-    print(summary(pollster_regression_2))
-    pollster_regression_3 = lm(Undecided~Date+as.factor(Pollster),data=poll_results,weights=Sample)
-    print(summary(pollster_regression_3))
+  sink(file="output/pollster_regressions.txt")
+    # test remain as dependent variable
+    pollster_regression_1a = lm(Remain~Date+as.factor(Pollster), 
+      data=poll_results, 
+      weights=Sample)
+    pollster_regression_1b = lm(Remain~Date, 
+      data=poll_results, 
+      weights=Sample)
+    test1 = lrtest(pollster_regression_1a, pollster_regression_1b)
+    print(summary(pollster_regression_1a))
+    print(summary(pollster_regression_1b))
+    print(test1)
+
+    # test leave as dependent variable
+    pollster_regression_2a = lm(Leave~Date+as.factor(Pollster),
+      data=poll_results, 
+      weights=Sample)
+    pollster_regression_2b = lm(Leave~Date, 
+      data=poll_results, 
+      weights=Sample)
+    test2 = lrtest(pollster_regression_2a, pollster_regression_2b)
+    print(summary(pollster_regression_2a))
+    print(summary(pollster_regression_2b))
+    print(test2)
+
+    # test undecided as dependent variable
+    pollster_regression_3a = lm(Undecided~Date+as.factor(Pollster), 
+      data=poll_results, 
+      weights=Sample)
+    pollster_regression_3b = lm(Undecided~Date, 
+      data=poll_results, 
+      weights=Sample)
+    test3 = lrtest(pollster_regression_3a, pollster_regression_3b)
+    print(summary(pollster_regression_3a))
+    print(summary(pollster_regression_3b))
+    print(test3)
   sink()
 }
 
@@ -228,22 +258,23 @@ generate_predictions = function(poll_results, proportion_leave_vote, proportion_
   # assumes leave, remain and undecided voter proportions are constant over time
   model_poll_results = poll_results %>% 
     mutate(days_to_election=as.numeric(election_date-Date), 
-           time_weight=get_time_weights(days_to_election, time_weights_method),
-           Leave = Leave * proportion_leave_vote,
-           Remain = Remain * proportion_remain_vote,
-           Undecided = Undecided * proportion_undecided_vote,
-           total = round(Sample*(Remain+Leave+Undecided)/100),
-           total_remain = total*((Remain+Undecided*proportion_undecided_remain)/
-                              (Remain+Leave+Undecided)), 
-           total_leave = total-total_remain,
-           se = sqrt(total_remain*total_leave/total^3),
-           remain = total_remain/total,
-           leave = total_leave/total,
-           ci = se*z,
-           size_weight = get_size_weights(se, remain, size_weights_method),
-           overall_weight = size_weight+relative_weight_time_to_size*time_weight) 
+      time_weight=get_time_weights(days_to_election, time_weights_method),
+      Leave = Leave * proportion_leave_vote,
+      Remain = Remain * proportion_remain_vote,
+      Undecided = Undecided * proportion_undecided_vote,
+      total = round(Sample*(Remain+Leave+Undecided)/100),
+      total_remain = total*
+        ((Remain+Undecided*proportion_undecided_remain)/(Remain+Leave+Undecided)), 
+      total_leave = total-total_remain,
+      se = sqrt(total_remain*total_leave/total^3),
+      remain = total_remain/total,
+      leave = total_leave/total,
+      ci = se*z,
+      size_weight = get_size_weights(se, remain, size_weights_method),
+      overall_weight = size_weight+relative_weight_time_to_size*time_weight) 
   # normalise weights so that they add up to 1
-  model_poll_results$overall_weight = model_poll_results$overall_weight/sum(model_poll_results$overall_weight)
+  model_poll_results$overall_weight = 
+    model_poll_results$overall_weight/sum(model_poll_results$overall_weight)
   
   return(model_poll_results)
 }
@@ -264,17 +295,17 @@ summarise_prediction = function(results, confidence_interval){
   }
 
   if(result[["remain"]][1]>result[["leave"]][1]){
-    outcome_summary = paste("The polls predict Britain will <font color=green>remain</font> in the EU probability: ",
-                            round(result[["remain"]][1]*100,2),"% with ",
-                            confidence_interval*100,"% CI (",
-                            round(result[["remain"]][2]*100,2)," to ",
-                            round(result[["remain"]][3]*100,2),")",sep="")      
+    outcome_summary = paste0("The polls predict Britain will <font color=green>remain</font> in the EU probability: ",
+      round(result[["remain"]][1]*100,2),"% with ",
+      confidence_interval*100,"% CI (",
+      round(result[["remain"]][2]*100,2)," to ",
+      round(result[["remain"]][3]*100,2),")")      
   } else {
-    outcome_summary = paste("The polls predict Britain will <font color=red>leave</font> the EU probability: ",
-                            round(result[["leave"]][1]*100,2),"% with ",
-                            confidence_interval*100,"% CI (",
-                            round(result[["leave"]][2]*100,2)," to ",
-                            round(result[["leave"]][3]*100,2),")",sep="")      
+    outcome_summary = paste0("The polls predict Britain will <font color=red>leave</font> the EU probability: ",
+      round(result[["leave"]][1]*100,2),"% with ",
+      confidence_interval*100,"% CI (",
+      round(result[["leave"]][2]*100,2)," to ",
+      round(result[["leave"]][3]*100,2),")")      
   }
   return(outcome_summary)
 }
@@ -284,10 +315,13 @@ summarise_prediction = function(results, confidence_interval){
 ###############################################################
 plot_poll_data = function(predicted_poll_data){
   predictions_data = predicted_poll_data %>% 
-    select(Date,remain,leave,ci) %>% 
-    gather(position,vote,-Date,-ci) %>%
+    select(Date, remain, leave,ci) %>% 
+    gather(position, vote, -Date, -ci) %>%
     mutate(vote=vote*100, ci=ci*100)
-  polls_plot = ggplot(data=predictions_data, mapping=aes(x=Date,y=vote,group=position,colour=position)) +
+  
+  polls_plot = ggplot(
+      data=predictions_data, 
+      mapping=aes(x=Date, y=vote, group=position, colour=position)) +
     ggtitle("Data used for predictions") +
     geom_point(alpha=0.3) +
     geom_errorbar(aes(ymin=vote-ci, ymax=vote+ci), width=0.1, alpha=0.3) +
@@ -298,9 +332,6 @@ plot_poll_data = function(predicted_poll_data){
     theme_bw() +
     theme(legend.position = c(0, 1), legend.justification = c(0, 1))
   
-  # save plot to file
-  #ggsave("polls_plot.png",polls_plot,width=30,height=20,units="cm",dpi=300)  
-  
   return(polls_plot)
 }
 
@@ -308,16 +339,17 @@ plot_poll_data = function(predicted_poll_data){
 # plot weights used in the prediction model
 ###################################################
 plot_model_weights = function(predicted_poll_data){
-  weight_data = predicted_poll_data %>% select(Date,weight=overall_weight) 
-  weights_plot = ggplot(data=weight_data, mapping=aes(x=Date,y=weight)) +
+  weight_data = predicted_poll_data %>% 
+    select(Date, weight=overall_weight) 
+
+  weights_plot = ggplot(
+      data=weight_data, 
+      mapping=aes(x=Date, y=weight)) +
     ggtitle("Weights used for predictions") +
     geom_point(alpha=0.3) +
     scale_x_date(date_breaks="9 months", date_labels="%b %y") +
     ylab("Relative weights") +
     theme_bw()
-  
-  # save plot to file
-  #ggsave("weights_plot.png",weights_plot,width=30,height=20,units="cm",dpi=300)  
 
   return(weights_plot)
 }
